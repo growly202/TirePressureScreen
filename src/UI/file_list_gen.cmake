@@ -1,0 +1,11 @@
+list(
+  APPEND
+  LV_EDITOR_PROJECT_SOURCES
+  ${CMAKE_CURRENT_LIST_DIR}/fonts/font_label_18_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/fonts/font_pressure_52_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/fonts/font_unit_22_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/images/car_top_image_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/screens/dashboard_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/screens/preview_test_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/UI_design_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/UI_design.c)
