@@ -117,7 +117,6 @@ void UI_design_init_gen(const char * asset_path);
 
 /*Include all the widgets, components and screens of this library*/
 #include "screens/dashboard_gen.h"
-#include "screens/preview_test_gen.h"
 
 #ifdef __cplusplus
 } /*extern "C"*/

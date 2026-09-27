@@ -1,7 +1,0 @@
-[  1%] Building C object CMakeFiles/test_gt911.dir/test_gt911.c.o
-[  1%] Building C object CMakeFiles/test_gt911.dir/home/slowly/Documents/PlatformIO/Projects/TirePressureScreen/src/gt911_report.c.o
-[  1%] Linking C executable test_gt911
-[  1%] Built target test_gt911
-[ 98%] Built target lvgl
-[ 99%] Built target lib-ui
-[100%] Built target ui_preview

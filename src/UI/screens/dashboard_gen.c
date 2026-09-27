@@ -135,6 +135,7 @@ lv_obj_t * dashboard_create(void)
         lv_obj_set_flag(center_panel, LV_OBJ_FLAG_SCROLLABLE, false);
         lv_obj_add_style(center_panel, &style_center_panel, 0);
         lv_obj_t * lv_label_0 = lv_label_create(center_panel);
+        lv_obj_set_name_static(lv_label_0, "system_status");
         lv_obj_set_x(lv_label_0, 0);
         lv_obj_set_y(lv_label_0, 421);
         lv_obj_set_width(lv_label_0, 176);
@@ -358,4 +359,3 @@ lv_obj_t * dashboard_create(void)
 /**********************
  *   STATIC FUNCTIONS
  **********************/
-
