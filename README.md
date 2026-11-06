@@ -13,7 +13,7 @@ Hiện project chạy trên màn hình thật với **dữ liệu áp suất mô
 
 ### Biểu đồ và cảnh báo
 
-Số áp suất cập nhật mỗi khi nhận dữ liệu. Biểu đồ thêm điểm khi có gói mới và đã đủ **30 giây tính từ điểm gần nhất**. Mẫu đầu tiên, mẫu sau khi phục hồi tín hiệu và mẫu có biến động đột ngột được thêm ngay. Nếu chưa nhận gói mới, hệ thống không tạo thêm điểm áp suất từ giá trị cũ.
+Số áp suất cập nhật mỗi khi nhận dữ liệu. Biểu đồ thêm điểm khi có gói mới và đã đủ **3 giây tính từ điểm gần nhất**. Mẫu đầu tiên, mẫu sau khi phục hồi tín hiệu và mẫu có biến động đột ngột được thêm ngay. Nếu chưa nhận gói mới, hệ thống không tạo thêm điểm áp suất từ giá trị cũ.
 
 | Điều kiện | Hiển thị / xử lý |
 |---|---|
@@ -26,7 +26,7 @@ Số áp suất cập nhật mỗi khi nhận dữ liệu. Biểu đồ thêm đ
 
 Trạng thái chung ưu tiên cảnh báo áp suất, sau đó `RAPID CHANGE`, `SENSOR LOST`, `WAITING DATA`, cuối cùng `SYSTEM NORMAL`. Nhãn `No Signal` của từng bánh vẫn hiển thị khi trạng thái chung đang báo một lỗi ưu tiên hơn. Bộ kiểm tra mất tín hiệu chạy mỗi **250 ms**, kể cả khi không có gói nào; bánh chưa từng nhận dữ liệu cũng chuyển sang `No Signal` sau 150 giây.
 
-Biểu đồ có tối đa **12 vị trí lịch sử**, gồm cả dấu ngắt khi mất tín hiệu, trong cửa sổ **5 phút 30 giây** tính đến lần ghi biểu đồ mới nhất. Trục ngang dùng thời gian thực của các điểm, với mốc `-5m30 / -2m45 / 0s`; **0s là lần ghi biểu đồ mới nhất**, không phải đồng hồ chạy liên tục. Trục dọc cố định **1,5–3,3 bar**. MIN / MAX tính trên các giá trị áp suất còn hiển thị; lịch sử bắt đầu trống và mất khi khởi động lại.
+Biểu đồ có tối đa **12 vị trí lịch sử**, gồm cả dấu ngắt khi mất tín hiệu, trong cửa sổ **33 giây** tính đến lần ghi biểu đồ mới nhất. Trục ngang dùng thời gian thực của các điểm, với mốc `-0m33 / -0m16 / 0s`; **0s là lần ghi biểu đồ mới nhất**, không phải đồng hồ chạy liên tục. Trục dọc cố định **1,5–3,3 bar**. MIN / MAX tính trên các giá trị áp suất còn hiển thị; lịch sử bắt đầu trống và mất khi khởi động lại.
 
 Các ngưỡng dưới đây là cấu hình thử nghiệm, nằm trong [include/tire_data.h](include/tire_data.h):
 
@@ -34,23 +34,24 @@ Các ngưỡng dưới đây là cấu hình thử nghiệm, nằm trong [includ
 |---|---|---|
 | `TIRE_LOW_LIMIT` | `200` | Ngưỡng thấp, đơn vị 0,01 bar |
 | `TIRE_HIGH_LIMIT` | `280` | Ngưỡng cao, đơn vị 0,01 bar |
-| `TIRE_CHART_INTERVAL_MS` | `30000` | Khoảng cách tối thiểu giữa các điểm thông thường |
+| `TIRE_SAMPLE_INTERVAL_MS` | `3000` | Chu kỳ gửi dữ liệu mô phỏng |
+| `TIRE_CHART_INTERVAL_MS` | `3000` | Khoảng cách tối thiểu giữa các điểm thông thường |
 | `TIRE_SUDDEN_CHANGE` | `20` | Chênh lệch kích hoạt cảnh báo nhanh, đơn vị 0,01 bar |
 | `TIRE_CHANGE_ALERT_MS` | `30000` | Thời gian giữ cảnh báo thay đổi nhanh |
 | `TIRE_SIGNAL_TIMEOUT_MS` | `150000` | Thời gian chờ trước khi báo mất tín hiệu |
 
 ### Dữ liệu mô phỏng
 
-[src/main.c](src/main.c) gửi đủ bốn giá trị mỗi giây từ bộ sinh dữ liệu trong [src/tire_data.c](src/tire_data.c). Chu kỳ 60 giây lặp lại:
+[src/main.c](src/main.c) gửi đủ bốn giá trị mỗi 3 giây từ bộ sinh dữ liệu trong [src/tire_data.c](src/tire_data.c). Chu kỳ 60 giây lặp lại:
 
 | Thời gian trong chu kỳ | Áp suất mô phỏng |
 |---|---|
 | 0–14 giây | Cả bốn bánh dao động quanh 2,3 bar |
-| 15–29 giây | Bánh FL giảm từ 1,90 xuống 1,62 bar |
-| 30–44 giây | FL trở về bình thường; bánh RR tăng từ 2,90 lên 3,18 bar |
+| 15–29 giây | Bánh FL giảm từ 1,90 xuống 1,66 bar |
+| 30–44 giây | FL trở về bình thường; bánh RR tăng từ 2,90 lên 3,14 bar |
 | 45–59 giây | Cả bốn bánh trở về quanh 2,3 bar |
 
-Cảnh báo `Rapid change` có thể còn giữ khi áp suất đã về bình thường, kể cả đầu chu kỳ tiếp theo. FR và RL giúp quan sát nhịp biểu đồ 30 giây; FL và RR có thêm điểm đột xuất tại các lần chuyển trạng thái.
+Cảnh báo `Rapid change` có thể còn giữ khi áp suất đã về bình thường, kể cả đầu chu kỳ tiếp theo. FR và RL giúp quan sát nhịp biểu đồ 3 giây; FL và RR có thêm điểm đột xuất tại các lần chuyển trạng thái.
 
 Mô phỏng luôn gửi đủ bốn bánh nên không tự tạo tình huống `No Signal`. Serial có dòng `SIMULATION enabled` và các mẫu `SIM`; trên dashboard không có nhãn phân biệt dữ liệu mô phỏng.
 

@@ -56,13 +56,15 @@ static void add_chart_details(unsigned wheel)
     chart_label(panel, "axis_max", "3.3", 14, top - half_text, 30, LV_TEXT_ALIGN_RIGHT);
     chart_label(panel, "axis_mid", "2.4", 14, top + height / 2 - half_text, 30, LV_TEXT_ALIGN_RIGHT);
     chart_label(panel, "axis_min", "1.5", 14, top + height - half_text, 30, LV_TEXT_ALIGN_RIGHT);
-    lv_obj_t *oldest = chart_label(panel, "time_oldest", "", left - 4, 198, 54, LV_TEXT_ALIGN_LEFT);
-    lv_obj_t *middle = chart_label(panel, "time_middle", "", left + width / 2 - 27, 198, 54, LV_TEXT_ALIGN_CENTER);
-    lv_label_set_text_fmt(oldest, "-%um%02u", HISTORY_WINDOW_MS / 60000,
-                         HISTORY_WINDOW_MS / 1000 % 60);
-    lv_label_set_text_fmt(middle, "-%um%02u", HISTORY_WINDOW_MS / 2 / 60000,
-                         HISTORY_WINDOW_MS / 2 / 1000 % 60);
-    chart_label(panel, "time_latest", "0s", left + width - 36, 198, 36, LV_TEXT_ALIGN_RIGHT);
+    if (wheel != TIRE_FL) {
+        lv_obj_t *oldest = chart_label(panel, "time_oldest", "", left - 4, 198, 54, LV_TEXT_ALIGN_LEFT);
+        lv_obj_t *middle = chart_label(panel, "time_middle", "", left + width / 2 - 27, 198, 54, LV_TEXT_ALIGN_CENTER);
+        lv_label_set_text_fmt(oldest, "-%um%02u", HISTORY_WINDOW_MS / 60000,
+                             HISTORY_WINDOW_MS / 1000 % 60);
+        lv_label_set_text_fmt(middle, "-%um%02u", HISTORY_WINDOW_MS / 2 / 60000,
+                             HISTORY_WINDOW_MS / 2 / 1000 % 60);
+        chart_label(panel, "time_latest", "0s", left + width - 36, 198, 36, LV_TEXT_ALIGN_RIGHT);
+    }
     wheel_status[wheel] = chart_label(panel, "wheel_status", "Waiting", 120, 12, 150,
                                        LV_TEXT_ALIGN_RIGHT);
     range_labels[wheel] = chart_label(panel, "chart_range", "MIN --   MAX --",
@@ -89,12 +91,23 @@ static void update_chart_range(unsigned wheel)
 
 static void append_point(unsigned wheel, uint32_t now, int32_t pressure)
 {
+    if (wheel == TIRE_FL) {
+        lv_chart_set_next_value(charts[wheel], series[wheel], pressure);
+        wheels[wheel].last_point = now;
+        update_chart_range(wheel);
+        lv_chart_refresh(charts[wheel]);
+        return;
+    }
     unsigned slot = lv_chart_get_x_start_point(charts[wheel], series[wheel]);
     wheels[wheel].timestamps[slot] = now;
     lv_chart_set_next_value2(charts[wheel], series[wheel], 0, pressure);
     int32_t *x = lv_chart_get_series_x_array(charts[wheel], series[wheel]);
     int32_t *y = lv_chart_get_series_y_array(charts[wheel], series[wheel]);
     for (unsigned i = 0; i < HISTORY_POINTS; ++i) {
+        if (y[i] == LV_CHART_POINT_NONE) {
+            x[i] = -HISTORY_WINDOW_MS;
+            continue;
+        }
         uint32_t age = now - wheels[wheel].timestamps[i];
         if (age > HISTORY_WINDOW_MS) y[i] = LV_CHART_POINT_NONE;
         x[i] = age <= HISTORY_WINDOW_MS ? -(int32_t)age : -HISTORY_WINDOW_MS;
@@ -141,10 +154,15 @@ lv_obj_t *app_ui_start(void)
             return NULL;
         }
         lv_label_set_text(pressure_labels[i], "--");
-        lv_chart_set_type(charts[i], LV_CHART_TYPE_SCATTER);
+        if (i == TIRE_FL) {
+            lv_chart_set_type(charts[i], LV_CHART_TYPE_LINE);
+            lv_chart_set_update_mode(charts[i], LV_CHART_UPDATE_MODE_SHIFT);
+        } else {
+            lv_chart_set_type(charts[i], LV_CHART_TYPE_SCATTER);
+            lv_chart_set_axis_range(charts[i], LV_CHART_AXIS_PRIMARY_X, -HISTORY_WINDOW_MS, 0);
+        }
         lv_obj_set_style_size(charts[i], 4, 4, LV_PART_INDICATOR);
         lv_chart_set_point_count(charts[i], HISTORY_POINTS);
-        lv_chart_set_axis_range(charts[i], LV_CHART_AXIS_PRIMARY_X, -HISTORY_WINDOW_MS, 0);
         lv_chart_set_axis_min_value(charts[i], LV_CHART_AXIS_PRIMARY_Y, 150);
         lv_chart_set_axis_max_value(charts[i], LV_CHART_AXIS_PRIMARY_Y, 330);
         lv_chart_set_all_values(charts[i], series[i], LV_CHART_POINT_NONE);
@@ -162,7 +180,8 @@ static void refresh_status(uint32_t now)
     bool low = false, high = false, lost = false, changed = false, waiting = false;
     for (unsigned i = 0; i < TIRE_COUNT; ++i) {
         uint32_t last_seen = wheels[i].seen ? wheels[i].last_seen : started_at;
-        if (!wheels[i].lost && (uint32_t)(now - last_seen) >= TIRE_SIGNAL_TIMEOUT_MS) {
+        if (i != TIRE_FL && !wheels[i].lost &&
+            (uint32_t)(now - last_seen) >= TIRE_SIGNAL_TIMEOUT_MS) {
             wheels[i].lost = true;
             /* A missing point breaks the line across a sensor outage. */
             if (wheels[i].seen) append_point(i, now, LV_CHART_POINT_NONE);
@@ -210,6 +229,9 @@ void app_ui_receive(unsigned wheel, uint16_t pressure)
     uint32_t now = lv_tick_get();
     /* Check elapsed time even if a packet arrives before the watchdog runs. */
     refresh_status(now);
+    if (pressure < 150) {
+        lv_chart_set_axis_min_value(charts[wheel], LV_CHART_AXIS_PRIMARY_Y, 0);
+    }
     bool fresh = !wheels[wheel].seen || wheels[wheel].lost;
     int delta = (int)pressure - wheels[wheel].pressure;
     bool sudden = !fresh && (delta >= TIRE_SUDDEN_CHANGE || delta <= -TIRE_SUDDEN_CHANGE);
@@ -222,7 +244,8 @@ void app_ui_receive(unsigned wheel, uint16_t pressure)
     wheels[wheel].last_seen = now;
     wheels[wheel].seen = true;
     wheels[wheel].lost = false;
-    if (fresh || sudden || (uint32_t)(now - wheels[wheel].last_point) >= TIRE_CHART_INTERVAL_MS)
+    if (wheel == TIRE_FL || fresh || sudden ||
+        (uint32_t)(now - wheels[wheel].last_point) >= TIRE_CHART_INTERVAL_MS)
         append_point(wheel, now, pressure);
     refresh_status(now);
 }
@@ -230,4 +253,69 @@ void app_ui_receive(unsigned wheel, uint16_t pressure)
 void app_ui_update(const tire_sample_t *sample)
 {
     for (unsigned i = 0; i < TIRE_COUNT; ++i) app_ui_receive(i, sample->pressure[i]);
+}
+
+void app_ui_get_state(app_ui_state_t *state)
+{
+    if (!state) return;
+    memset(state, 0, sizeof(*state));
+    for (unsigned i = 0; i < TIRE_COUNT; ++i) {
+        state->wheels[i].seen = wheels[i].seen;
+        state->wheels[i].pressure = wheels[i].pressure;
+        if (!charts[i] || !series[i]) continue;
+        state->wheels[i].start_point = lv_chart_get_x_start_point(charts[i], series[i]);
+        int32_t *y = lv_chart_get_series_y_array(charts[i], series[i]);
+        int32_t *x = lv_chart_get_series_x_array(charts[i], series[i]);
+        for (unsigned j = 0; j < HISTORY_POINTS; ++j) {
+            state->wheels[i].y_points[j] = y ? y[j] : LV_CHART_POINT_NONE;
+            state->wheels[i].x_points[j] = x ? x[j] : 0;
+        }
+    }
+}
+
+void app_ui_set_state(const app_ui_state_t *state)
+{
+    if (!state) return;
+    uint32_t now = lv_tick_get();
+    for (unsigned i = 0; i < TIRE_COUNT; ++i) {
+        if (!state->wheels[i].seen || !charts[i] || !series[i]) continue;
+        wheels[i].seen = true;
+        wheels[i].lost = false;
+        wheels[i].change_alert = false;
+        wheels[i].pressure = state->wheels[i].pressure;
+        wheels[i].last_seen = now;
+        wheels[i].last_point = now;
+        if (state->wheels[i].pressure < 150) {
+            lv_chart_set_axis_min_value(charts[i], LV_CHART_AXIS_PRIMARY_Y, 0);
+        }
+        int32_t *y = lv_chart_get_series_y_array(charts[i], series[i]);
+        int32_t *x = lv_chart_get_series_x_array(charts[i], series[i]);
+        for (unsigned j = 0; j < HISTORY_POINTS; ++j) {
+            int32_t y_val = state->wheels[i].y_points[j];
+            y[j] = y_val;
+            if (y_val != LV_CHART_POINT_NONE && y_val < 150) {
+                lv_chart_set_axis_min_value(charts[i], LV_CHART_AXIS_PRIMARY_Y, 0);
+            }
+            if (i != TIRE_FL && x) {
+                if (y_val != LV_CHART_POINT_NONE) {
+                    int32_t x_val = state->wheels[i].x_points[j];
+                    if (x_val > 0) x_val = 0;
+                    if (x_val < -HISTORY_WINDOW_MS) {
+                        y[j] = LV_CHART_POINT_NONE;
+                        x[j] = -HISTORY_WINDOW_MS;
+                    } else {
+                        x[j] = x_val;
+                        wheels[i].timestamps[j] = now - (uint32_t)(-x_val);
+                    }
+                } else {
+                    x[j] = -HISTORY_WINDOW_MS;
+                }
+            }
+        }
+        lv_chart_set_x_start_point(charts[i], series[i],
+                                   state->wheels[i].start_point % HISTORY_POINTS);
+        update_chart_range(i);
+        lv_chart_refresh(charts[i]);
+    }
+    refresh_status(now);
 }
