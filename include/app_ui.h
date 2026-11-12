@@ -11,9 +11,6 @@
 typedef struct {
     bool seen;
     uint16_t pressure;
-    uint32_t start_point;
-    int32_t y_points[APP_UI_HISTORY_POINTS];
-    int32_t x_points[APP_UI_HISTORY_POINTS];
 } app_ui_wheel_state_t;
 
 typedef struct {

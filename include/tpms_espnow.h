@@ -32,13 +32,53 @@ typedef struct __attribute__((packed)) {
 
 _Static_assert(sizeof(tpms_espnow_packet_t) == 64, "tpms_espnow_packet_t must be 64 bytes");
 
-/* Initialize Wi-Fi STA and ESP-NOW receiver with automatic channel sync. */
+/* Configured TPMS sensor IDs for the 4 wheels (case-insensitive hex string).
+ * Set fixed IDs here to lock each sensor to a specific wheel position.
+ * Any slot left as "" will automatically bind to the next new sensor ID received. */
+#ifndef TPMS_SENSOR_ID_FL
+#define TPMS_SENSOR_ID_FL "2DE995"
+#endif
+#ifndef TPMS_SENSOR_ID_FR
+#define TPMS_SENSOR_ID_FR "7EA39A"
+#endif
+#ifndef TPMS_SENSOR_ID_RL
+#define TPMS_SENSOR_ID_RL "D2F8BD"
+#endif
+#ifndef TPMS_SENSOR_ID_RR
+#define TPMS_SENSOR_ID_RR "D31213"
+#endif
+
+#define TPMS_SENSOR_ID_MAX_LEN 15
+#define TPMS_WHEEL_COUNT       4
+
+typedef struct {
+    bool     has_last;
+    uint32_t last_seq;
+    uint32_t last_uptime_ms;
+    char     sensor_id[TPMS_SENSOR_ID_MAX_LEN];
+} tpms_wheel_sensor_state_t;
+
+/* Set to 1 if you also want 2.4 GHz ESP-NOW reception alongside direct CC1101.
+ * Default 0 keeps Wi-Fi radio off for cleaner 3.3V power rail on CC1101 433.92 MHz. */
+#ifndef TPMS_ENABLE_ESPNOW_RX
+#define TPMS_ENABLE_ESPNOW_RX 0
+#endif
+
+/* Initialize TPMS sensor ID mapper and RX queue (plus ESP-NOW if enabled). */
 esp_err_t tpms_espnow_init(void);
+
+/* Submit a decoded TPMS sensor packet (from direct CC1101 or ESP-NOW) into the
+ * 4-wheel Sensor ID mapper, duplicate filter, and UI RX queue. */
+bool tpms_espnow_ingest_packet(const tpms_espnow_packet_t *in_pkt);
 
 /* Non-blocking dequeue of received TPMS sensor packet (call from LVGL task). */
 bool tpms_espnow_receive(tpms_espnow_packet_t *out_pkt);
 
-/* Seed last seen sensor sequence/uptime (e.g., restored from NVS) to ignore re-broadcasts. */
-void tpms_espnow_set_last_sensor(uint32_t seq, uint32_t uptime_ms);
+/* Export/import per-wheel sensor ID mapping and last seen sequence/uptime for NVS. */
+void tpms_espnow_get_sensor_states(tpms_wheel_sensor_state_t out_states[TPMS_WHEEL_COUNT]);
+void tpms_espnow_set_sensor_states(const tpms_wheel_sensor_state_t in_states[TPMS_WHEEL_COUNT]);
+
+/* Get the currently bound sensor ID string for a wheel (0=FL, 1=FR, 2=RL, 3=RR). */
+const char *tpms_espnow_get_wheel_sensor_id(unsigned wheel);
 
 #endif /* TPMS_ESPNOW_H */

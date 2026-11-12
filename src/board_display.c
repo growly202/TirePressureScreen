@@ -14,6 +14,7 @@
 #include "esp_log.h"
 #include "esp_psram.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 
 #define I2C_TIMEOUT_MS 50
@@ -27,6 +28,7 @@
 static const char *TAG = "waveshare_lcd";
 static i2c_master_bus_handle_t bus;
 static i2c_master_dev_handle_t expander_config, expander_output, touch;
+static SemaphoreHandle_t s_i2c_mutex;
 static esp_lcd_panel_handle_t panel;
 static uint8_t outputs;
 static uint32_t flushes;
@@ -45,19 +47,28 @@ static esp_err_t add_device(uint16_t address, i2c_master_dev_handle_t *device)
 
 static esp_err_t set_outputs(uint8_t value)
 {
+    if (s_i2c_mutex) xSemaphoreTake(s_i2c_mutex, portMAX_DELAY);
     esp_err_t err = i2c_master_transmit(expander_output, &value, 1, I2C_TIMEOUT_MS);
     if (err == ESP_OK) outputs = value;
+    if (s_i2c_mutex) xSemaphoreGive(s_i2c_mutex);
     return err;
 }
 
 static esp_err_t touch_read_register(uint16_t reg, uint8_t *data, size_t size)
 {
     uint8_t address[] = {(uint8_t)(reg >> 8), (uint8_t)reg};
-    return i2c_master_transmit_receive(touch, address, sizeof(address), data, size, I2C_TIMEOUT_MS);
+    if (s_i2c_mutex) xSemaphoreTake(s_i2c_mutex, portMAX_DELAY);
+    esp_err_t err = i2c_master_transmit_receive(touch, address, sizeof(address), data, size, I2C_TIMEOUT_MS);
+    if (s_i2c_mutex) xSemaphoreGive(s_i2c_mutex);
+    return err;
 }
 
 static esp_err_t reset_devices(void)
 {
+    if (!s_i2c_mutex) {
+        s_i2c_mutex = xSemaphoreCreateMutex();
+        ESP_RETURN_ON_FALSE(s_i2c_mutex != NULL, ESP_ERR_NO_MEM, TAG, "I2C mutex");
+    }
     i2c_master_bus_config_t config = {
         .i2c_port = I2C_NUM_0,
         .sda_io_num = GPIO_NUM_8,
@@ -115,7 +126,9 @@ static void touch_read(lv_indev_t *indev, lv_indev_data_t *data)
         }
         /* Acknowledge even malformed packets; never leave ready stuck. */
         const uint8_t clear[] = {0x81, 0x4e, 0x00};
+        if (s_i2c_mutex) xSemaphoreTake(s_i2c_mutex, portMAX_DELAY);
         esp_err_t ack = i2c_master_transmit(touch, clear, sizeof(clear), I2C_TIMEOUT_MS);
+        if (s_i2c_mutex) xSemaphoreGive(s_i2c_mutex);
         if (err == ESP_OK) err = ack;
     }
     if (err != ESP_OK) {
@@ -176,7 +189,7 @@ esp_err_t board_display_init(lv_display_t **display)
         .in_color_format = LCD_COLOR_FMT_RGB565,
         .out_color_format = LCD_COLOR_FMT_RGB565,
         .num_fbs = 1,
-        .bounce_buffer_size_px = APP_WIDTH * 10,
+        .bounce_buffer_size_px = APP_WIDTH * 20,
         .dma_burst_size = 64,
         .hsync_gpio_num = GPIO_NUM_46, .vsync_gpio_num = GPIO_NUM_3,
         .de_gpio_num = GPIO_NUM_5, .pclk_gpio_num = GPIO_NUM_7,
@@ -207,7 +220,39 @@ esp_err_t board_display_init(lv_display_t **display)
 
 esp_err_t board_backlight_on(void)
 {
-    return set_outputs(outputs | EXIO_BACKLIGHT);
+    uint8_t next = outputs | EXIO_BACKLIGHT;
+    return set_outputs(next);
+}
+
+esp_err_t board_set_sd_cs(bool high)
+{
+    if (!expander_output) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (s_i2c_mutex) xSemaphoreTake(s_i2c_mutex, portMAX_DELAY);
+    uint8_t next = high ? (uint8_t)(outputs | EXIO_SD_CS)
+                        : (uint8_t)(outputs & (uint8_t)~EXIO_SD_CS);
+    esp_err_t err = ESP_OK;
+    if (next != outputs) {
+        err = i2c_master_transmit(expander_output, &next, 1, I2C_TIMEOUT_MS);
+        if (err == ESP_OK) outputs = next;
+    }
+    if (s_i2c_mutex) xSemaphoreGive(s_i2c_mutex);
+    return err;
+}
+
+void board_i2c_lock(void)
+{
+    if (s_i2c_mutex) {
+        xSemaphoreTake(s_i2c_mutex, portMAX_DELAY);
+    }
+}
+
+void board_i2c_unlock(void)
+{
+    if (s_i2c_mutex) {
+        xSemaphoreGive(s_i2c_mutex);
+    }
 }
 
 uint32_t board_display_flush_count(void)
