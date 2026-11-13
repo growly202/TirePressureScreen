@@ -856,49 +856,9 @@ static bool init_rtl433_tpms_decoders(void)
     cfg->messageBuffer = s_json_buffer;
     cfg->bufferSize = sizeof(s_json_buffer);
 
-    /* Register all 34 OOK + FSK TPMS protocols from rtl_433_ESP */
+    /* Register only Jansite TY-468 / KKMOON OOK TPMS decoder */
     static const r_device *const k_tpms_devices[] = {
-        /* Primary OOK TPMS decoders */
         &tpms_jansite_ty468,
-        &tpms_imars_t240,
-        &tpms_eezrv,
-        &tmps_gear_hive,
-        &tpms_gm,
-        &tpms_schrader_motorcycle,
-        &tpms_smartire,
-        &tpms_trw_ook,
-        &tpms_tyreguard400,
-        &schraeder,
-        &schrader_EG53MA4,
-        &schrader_SMD3MA4,
-        &schrader_NIS315G3,
-        &schrader_MRXBC5A4,
-        /* FSK TPMS decoders */
-        &tpms_jansite_ty588,
-        &tpms_jansite,
-        &tpms_jansite_solar,
-        &tpms_abarth124,
-        &tpms_airpuxem,
-        &tpms_ave,
-        &tpms_bmw,
-        &tpms_bmwg3,
-        &tpms_citroen,
-        &tpms_elantra2012,
-        &tpms_ford,
-        &tpms_honda,
-        &tpms_hyundai_vdo,
-        &tpms_jeep,
-        &tpms_kia,
-        &tpms_mercedes_benz,
-        &tpms_nissan,
-        &tpms_pmv107j,
-        &tpms_porsche,
-        &tpms_renault,
-        &tpms_renault_0435r,
-        &tpms_sefis_m3,
-        &tpms_toyota,
-        &tpms_truck,
-        &tpms_trw_fsk,
     };
 
     const size_t num_devs = sizeof(k_tpms_devices) / sizeof(k_tpms_devices[0]);
@@ -910,7 +870,7 @@ static bool init_rtl433_tpms_decoders(void)
         }
     }
 
-    ESP_LOGI(TAG, "Registered %u OOK/FSK TPMS decoders in rtl_433 engine", (unsigned)num_devs);
+    ESP_LOGI(TAG, "Registered 1 dedicated OOK TPMS decoder (%s) in rtl_433 engine", tpms_jansite_ty468.name);
     return true;
 }
 
@@ -1306,9 +1266,9 @@ esp_err_t tpms_cc1101_init(void)
 
     s_initialized = true;
 
-    /* Create decoder task on Core 1 first so it registers the GDO0 GPIO ISR on Core 1 */
+    /* Create decoder and rx tasks on Core 1 so Core 0 is 100% dedicated to LVGL & RGB LCD DMA */
     xTaskCreatePinnedToCore(cc1101_decoder_task, "rtl433_dec", 20480, NULL, 2, NULL, 1);
-    xTaskCreatePinnedToCore(cc1101_rx_task, "cc1101_rx", 4096, NULL, 3, NULL, 0);
+    xTaskCreatePinnedToCore(cc1101_rx_task, "cc1101_rx", 4096, NULL, 3, NULL, 1);
 
     ESP_LOGI(TAG,
              "Direct CC1101 OOK_Receiver initialized on UART2+SensorAD+I2C (CSN=GPIO%d/TXD, MISO=GPIO%d/RXD, MOSI=GPIO%d/SDA, SCLK=GPIO%d/SCL, GDO0=GPIO%d/AD)",
